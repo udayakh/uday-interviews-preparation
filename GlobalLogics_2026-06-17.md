@@ -19,6 +19,7 @@
 7. [Redis](#7-redis)
 8. [Kubernetes HPA](#8-hpa-horizontal-pod-autoscaler)
 9. [Circular Dependency](#9-circular-dependency)
+10. [HashMap Internal Implementation](#10-hashmap-internal-implementation)
 
 ---
 
@@ -194,6 +195,37 @@ class B { B(A a) { } }   // B needs A  -> cycle
 5. (Spring Boot 2.6+) `spring.main.allow-circular-references=true` — a last-resort flag, not recommended.
 
 > Best practice: prefer **constructor injection** and **refactor** away the cycle rather than masking it.
+
+---
+
+### Java Collections
+
+#### 10. HashMap Internal Implementation
+A `HashMap` stores key-value pairs in an **array of buckets** (`Node<K,V>[] table`). Each entry is a `Node` holding `hash`, `key`, `value`, and a `next` pointer.
+
+**put(key, value) flow:**
+1. Compute `hashCode()` of the key, then apply a **perturbation**: `hash = h ^ (h >>> 16)` to spread high bits and reduce collisions.
+2. Find the bucket index: `index = (n - 1) & hash` (works because capacity `n` is always a power of 2).
+3. If the bucket is empty → insert the node.
+4. If occupied (**collision**) → compare with `equals()`:
+   - Same key → overwrite the value.
+   - Different key → append to the bucket's chain.
+
+**Collision handling:**
+- **Before Java 8:** collisions stored as a **linked list** → worst case lookup O(n).
+- **Java 8+:** when a bucket's chain exceeds **TREEIFY_THRESHOLD = 8** (and table capacity ≥ 64), it converts to a **balanced Red-Black Tree** → worst case O(log n). It reverts to a list when size drops below **UNTREEIFY_THRESHOLD = 6**.
+
+**Resizing (rehashing):**
+- Default initial capacity **16**, load factor **0.75**.
+- When `size > capacity × loadFactor` (e.g., 12 of 16), capacity **doubles** and entries are redistributed.
+
+**Complexity:** average **O(1)** for get/put; worst case **O(log n)** (Java 8+ with treeified buckets).
+
+**Key contracts & notes:**
+- Keys must implement consistent `hashCode()` **and** `equals()`; equal objects must return equal hash codes.
+- Allows **one null key** (stored in bucket 0) and multiple null values.
+- **Not thread-safe** — use `ConcurrentHashMap` for concurrency (`Collections.synchronizedMap` is a coarse-grained alternative).
+- Prefer **immutable keys** (e.g., `String`, `Integer`); mutating a key after insertion breaks lookups.
 
 ---
 
