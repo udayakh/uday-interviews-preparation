@@ -20,6 +20,7 @@
 8. [Kubernetes HPA](#8-hpa-horizontal-pod-autoscaler)
 9. [Circular Dependency](#9-circular-dependency)
 10. [HashMap Internal Implementation](#10-hashmap-internal-implementation)
+11. [CompletableFuture](#11-completablefuture)
 
 ---
 
@@ -226,6 +227,71 @@ A `HashMap` stores key-value pairs in an **array of buckets** (`Node<K,V>[] tabl
 - Allows **one null key** (stored in bucket 0) and multiple null values.
 - **Not thread-safe** — use `ConcurrentHashMap` for concurrency (`Collections.synchronizedMap` is a coarse-grained alternative).
 - Prefer **immutable keys** (e.g., `String`, `Integer`); mutating a key after insertion breaks lookups.
+
+---
+
+### Java Concurrency
+
+#### 11. CompletableFuture
+Introduced in **Java 8**, `CompletableFuture<T>` represents an **asynchronous computation** that may complete in the future. It improves on the old `Future` by supporting **non-blocking chaining, composition, and callbacks** — you don't have to call a blocking `get()`.
+
+**Future vs CompletableFuture:**
+
+| `Future`                          | `CompletableFuture`                          |
+| --------------------------------- | -------------------------------------------- |
+| Blocking `get()` only             | Non-blocking callbacks (`thenApply`, etc.)   |
+| No chaining/composition           | Chain & combine multiple futures             |
+| Can't be completed manually       | Can complete manually (`complete()`)         |
+| No exception handling pipeline    | `exceptionally`, `handle`, `whenComplete`    |
+
+**Creating:**
+```java
+// async with return value (uses ForkJoinPool.commonPool by default)
+CompletableFuture<String> cf = CompletableFuture.supplyAsync(() -> "result");
+
+// async with no return value
+CompletableFuture<Void> run = CompletableFuture.runAsync(() -> doWork());
+
+// already completed
+CompletableFuture<String> done = CompletableFuture.completedFuture("value");
+```
+
+**Chaining / transforming:**
+- `thenApply(fn)` – transform the result (sync), returns a value.
+- `thenAccept(consumer)` – consume the result, returns void.
+- `thenRun(runnable)` – run after completion, ignores result.
+- `thenCompose(fn)` – **flatMap**: chain another future (avoids nested `CompletableFuture<CompletableFuture<T>>`).
+- `thenCombine(other, fn)` – combine results of **two independent** futures.
+- Add the **`...Async`** suffix (e.g., `thenApplyAsync`) to run the step on a different thread / custom executor.
+
+```java
+CompletableFuture.supplyAsync(() -> fetchUser(id))
+    .thenApply(user -> user.getName())          // transform
+    .thenCompose(name -> fetchOrders(name))     // chain dependent call
+    .thenAccept(System.out::println);           // consume
+```
+
+**Combining many:**
+```java
+CompletableFuture.allOf(f1, f2, f3).join();   // wait for ALL
+CompletableFuture.anyOf(f1, f2, f3).join();   // first to complete
+```
+
+**Exception handling:**
+- `exceptionally(ex -> fallback)` – recover with a fallback value.
+- `handle((res, ex) -> ...)` – runs on both success and failure.
+- `whenComplete((res, ex) -> ...)` – side-effect (logging), doesn't alter the result.
+
+```java
+CompletableFuture.supplyAsync(() -> riskyCall())
+    .exceptionally(ex -> "default")
+    .thenAccept(System.out::println);
+```
+
+**Key points:**
+- Prefer a **custom `ExecutorService`** for blocking/IO tasks instead of the default common pool (which is sized for CPU-bound work).
+- `get()` is blocking and throws checked exceptions; `join()` is blocking but throws unchecked.
+- Great for parallel I/O calls (e.g., aggregating multiple microservice responses) and ties into the *"handle 1000 requests"* async strategy above.
 
 ---
 
